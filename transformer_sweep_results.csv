@@ -1,0 +1,5 @@
+name,model_name,folds,epochs,batch_size,lr,max_length,weight_decay,warmup_ratio,cv_mean,cv_std
+distilbert_baseline,distilbert-base-uncased,3,3,16,2e-5,64,0.01,0.1,0.817868,0.014548
+roberta_best_so_far,roberta-base,3,3,8,2e-5,96,0.01,0.1,0.841784,0.011494
+roberta_more_epochs,roberta-base,3,4,8,2e-5,96,0.01,0.1,0.839946,0.007866
+roberta_5fold_check,roberta-base,5,3,8,2e-5,96,0.01,0.1,0.843627,0.010772
