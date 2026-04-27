@@ -294,37 +294,38 @@ def _extract_label_from_url(url: str) -> str:
     return "Unknown"
 
 
-def prepare_data(path: str) -> Tuple[List[str], List[str]]:
-    """
-    Read CSV data and return model-ready text inputs and aligned labels.
-    """
-    X: List[str] = []
-    y: List[str] = []
+def prepare_data(path: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    # Use the commented code when testing on a csv with the headlines already preprocessed, otherwise use the crawler
+    # """
+    # Read CSV data and return model-ready text inputs and aligned labels.
+    # """
+    # X: List[str] = []
+    # y: List[str] = []
 
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            url = _pick_first(row, ["url", "\ufeffurl", "URL", "Url"])
-            headline = _pick_first(row, ["headline", "scraped_headline", "alternative_headline", "title"])
+    # with open(path, "r", encoding="utf-8-sig", newline="") as f:
+    #     reader = csv.DictReader(f)
+    #     for row in reader:
+    #         url = _pick_first(row, ["url", "\ufeffurl", "URL", "Url"])
+    #         headline = _pick_first(row, ["headline", "scraped_headline", "alternative_headline", "title"])
 
-            label = _extract_label_from_url(url)
-            if label == "Unknown":
-                # Skip rows that do not belong to either target class.
-                continue
+    #         label = _extract_label_from_url(url)
+    #         if label == "Unknown":
+    #             # Skip rows that do not belong to either target class.
+    #             continue
 
-            headline_norm = _normalize_text(headline)
+    #         headline_norm = _normalize_text(headline)
 
-            # Strict headline-only features.
-            features = headline_norm
-            X.append(features)
-            y.append(label)
+    #         # Strict headline-only features.
+    #         features = headline_norm
+    #         X.append(features)
+    #         y.append(label)
 
-    if len(X) != len(y):
-        raise ValueError("prepare_data produced misaligned X and y lengths.")
-    if not X:
-        raise ValueError("prepare_data found no valid rows for FoxNews/NBC.")
+    # if len(X) != len(y):
+    #     raise ValueError("prepare_data produced misaligned X and y lengths.")
+    # if not X:
+    #     raise ValueError("prepare_data found no valid rows for FoxNews/NBC.")
 
-    return X, y
+    # return X, y
     urls = _read_urls_from_csv(path)
     crawled = crawl(urls)
 
