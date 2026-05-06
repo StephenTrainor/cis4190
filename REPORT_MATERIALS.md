@@ -1,6 +1,6 @@
 # Report materials — Project B (News headline source classifier)
 
-**Use this file as your primary source for the write-up.** It consolidates `experiment_log.md`, `model_iteration_log.md`, and the current codebase. You do **not** need to paste those raw logs into the report; cite numbers and methods from here, and attach or link the repo as needed.
+**Use this file as your primary source for the write-up.** It consolidates `experiment_log.md`, `model_iteration_log.md`, and the current codebase. **Section 2** is the full **iteration story** (what you tried, what failed, why you moved on, how you chose the final model). You do **not** need to paste raw logs into the report; cite numbers and methods from here, and attach or link the repo as needed.
 
 ---
 
@@ -12,7 +12,25 @@
 
 ---
 
-## 2. Dataset summary (for Methods / Data)
+## 2. How we iterated (narrative for the report)
+
+**Goal:** Maximize **headline-only** classification accuracy on the course leaderboard while satisfying the `prepare_data` / `model.py` / `model.pt` contract.
+
+**Phase A — Classical bag-of-words.** We began with **word TF–IDF** plus linear models (multinomial Naive Bayes, logistic regression, **LinearSVC**, SGD). On 5-fold stratified CV this landed around **0.78–0.80** accuracy. That established a floor: outlets share topics and vocabulary, so word unigrams/bigrams alone are limited.
+
+**Phase B — Richer classical features.** We tried **character n-gram TF–IDF** (wider n-gram spans, sublinear TF) with **LinearSVC**, and a **hybrid** word + char pipeline. CV improved to about **~0.82** (best classical near **0.821**). Still short of strong leaderboard performance and of transformer results.
+
+**Phase C — Why leaderboard lagged local scores.** Hidden-set accuracy stayed near **~0.80** while some local checks looked much higher. The main issue was **preprocessing mismatch and fragility**: an earlier `prepare_data` path could **re-crawl URLs** at evaluation time, producing empty or inconsistent text under timeouts and blocks. We **stopped all network I/O** in `prepare_data` and standardized on **headline fields already present in the CSV**. We also removed **URL text as model input** and any **URL-string shortcuts** in `predict` so the submission stayed **headline-only** (URL remains acceptable for **constructing labels** in the training CSV, consistent with the assignment).
+
+**Phase D — Transformers.** We added **Hugging Face** fine-tuning (`train_distilbert.py`, CV via `eval_distilbert_cv.py`). **DistilBERT** and **RoBERTa-base** beat classical models. The biggest empirical lesson was **normalization**: **lowercasing headlines before tokenization hurt RoBERTa**; preserving case after light cleaning improved 3-fold CV to about **0.8526** (RoBERTa-base, 3 epochs, batch 8, lr 2e-5, max length 128). We tried longer sequences, more epochs, other LRs, **DistilRoBERTa**, **BERT-cased**, **DeBERTa**, and **RoBERTa-large**; none consistently beat that RoBERTa-base recipe on CV, and larger models sometimes **overfit or became unstable** on ~3.8k examples.
+
+**Phase E — Submission packaging.** The leaderboard only takes **`preprocess.py`, `model.py`, `model.pt`**. We **bundled RoBERTa weights and tokenizer files inside `model.pt`** and updated `model.py` to load from that single file with no extra artifact directories. **Inference latency** rose (transformer vs linear), but **hidden validation** improved (roughly **~0.84** vs **~0.80** earlier).
+
+**Where we ended:** **Fine-tuned RoBERTa-base**, headline-only, case-preserving text, deterministic CSV preprocessing, single-file **`model.pt`** — the path from weak baselines → robust prep → transformer tuning → deployable bundle.
+
+---
+
+## 3. Dataset summary (for Methods / Data)
 
 | Item | Value |
 |------|--------|
@@ -26,7 +44,7 @@
 
 ---
 
-## 3. Course / submission constraints (short paragraph)
+## 4. Course / submission constraints (short paragraph)
 
 - `preprocess.py`: `prepare_data(csv_path) -> (X, y)` with string labels `FoxNews` / `NBC` (or compatible).
 - `model.py`: `get_model()` or default `Model()`; backend calls `predict(batch)`.
@@ -34,9 +52,9 @@
 
 ---
 
-## 4. Baselines and classical models (Results / Related work)
+## 5. Baselines and classical models (Results / Related work)
 
-### 4.1 Early TF–IDF baselines (5-fold stratified CV, headline-only)
+### 5.1 Early TF–IDF baselines (5-fold stratified CV, headline-only)
 
 From `experiment_log.md`:
 
@@ -47,7 +65,7 @@ From `experiment_log.md`:
 | TF-IDF (1,2) + Linear SVC | **0.7971** | 0.0150 |
 | TF-IDF (1,2) + SGD (hinge) | 0.7858 | 0.0162 |
 
-### 4.2 Later classical sweep (char n-grams + LinearSVC, 5-fold CV)
+### 5.2 Later classical sweep (char n-grams + LinearSVC, 5-fold CV)
 
 From iteration log:
 
@@ -61,9 +79,9 @@ From iteration log:
 
 ---
 
-## 5. Transformer experiments (main Results section)
+## 6. Transformer experiments (main Results section)
 
-### 5.1 Early transformer CV (3-fold; some runs used `max_length` 64–96)
+### 6.1 Early transformer CV (3-fold; some runs used `max_length` 64–96)
 
 From `experiment_log.md`:
 
@@ -73,7 +91,7 @@ From `experiment_log.md`:
 | DistilBERT, tuned | 0.8302 | |
 | RoBERTa-base, `max_length=96` | **0.8365** | best in that sweep |
 
-### 5.2 Refined RoBERTa study (headline-only, preserve case)
+### 6.2 Refined RoBERTa study (headline-only, preserve case)
 
 Key result: **do not lowercase** headlines for RoBERTa.
 
@@ -88,7 +106,7 @@ Key result: **do not lowercase** headlines for RoBERTa.
 
 **Report sentence:** Larger models did not automatically win; **RoBERTa-base with conservative fine-tuning and preserved casing** gave the best cross-validated headline-only performance in this project.
 
-### 5.3 Final training command (reproducibility)
+### 6.3 Final training command (reproducibility)
 
 Fine-tune on full training CSV, then export:
 
@@ -109,7 +127,7 @@ python export_submission_roberta.py \
 
 ---
 
-## 6. Leaderboard vs local metrics (important caveat)
+## 7. Leaderboard vs local metrics (important caveat)
 
 | Metric | Typical value | Interpretation |
 |--------|----------------|----------------|
@@ -121,7 +139,7 @@ python export_submission_roberta.py \
 
 ---
 
-## 7. Engineering lessons (Discussion)
+## 8. Engineering lessons (Discussion)
 
 1. **Deterministic preprocessing:** `prepare_data` must not depend on live scraping for leaderboard reliability.
 2. **Casing:** Lowercasing removed useful signal for pretrained tokenizers; **preserve case** for RoBERTa.
@@ -131,7 +149,7 @@ python export_submission_roberta.py \
 
 ---
 
-## 8. Suggested report outline (fill with prose)
+## 9. Suggested report outline (fill with prose)
 
 1. **Introduction:** Task, motivation, headline-only constraint.
 2. **Data:** Source, label derivation, class balance, cleaning.
@@ -143,19 +161,19 @@ python export_submission_roberta.py \
 
 ---
 
-## 9. Files in repo (what each is for)
+## 10. Files in repo (what each is for)
 
 | File | Purpose |
 |------|---------|
 | `REPORT_MATERIALS.md` | **This document** — report source of truth |
 | `experiment_log.md` | Original baseline + early transformer notes (some “final model” lines are **outdated**) |
-| `model_iteration_log.md` | Chronological engineering log (includes superseded ideas — use **Section 1–8 here** for consistency) |
+| `model_iteration_log.md` | Chronological engineering log (includes superseded ideas — prefer **Sections 1–8 of this file** for a single consistent story) |
 | `README.md` | Quick start and commands |
 | `transformer_sweep_results.csv` | Numeric sweep snapshot |
 
 ---
 
-## 10. One-sentence “final model” blurb (abstract-ready)
+## 11. One-sentence “final model” blurb (abstract-ready)
 
 > We fine-tuned **RoBERTa-base** as a binary sequence classifier on **headline-only** text (labels from publisher URL), using **case-preserving** preprocessing, **AdamW** with linear warmup, and exported weights plus tokenizer into a single **`model.pt`** for leaderboard submission, improving hidden validation accuracy from roughly **0.80** to **~0.84** while accepting higher per-example latency.
 
