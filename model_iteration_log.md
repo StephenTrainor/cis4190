@@ -131,3 +131,8 @@
 - Validation with artifacts folder removed:
   - moved `submission_roberta_artifacts` away and ran evaluator using only three files.
   - Result: accuracy `0.9666`, avg infer ms `1.964`.
+
+## Repository cleanup (report prep)
+- Removed: `model_nb_backup.py`, `train_model_nb_backup.py`, `test.py`, duplicate `headlines_data.csv`, local `distilbert_artifacts/`, `submission_roberta_artifacts/`, `__pycache__/`.
+- Added: `README.md` (layout + commands), `requirements.txt`.
+- Training scripts now pick device in order **CUDA → MPS → CPU** (`train_distilbert.py`, `eval_distilbert_cv.py`) so AWS GPU instances are used when available.

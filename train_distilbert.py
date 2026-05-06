@@ -1,7 +1,7 @@
 import argparse
 import csv
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Tuple
 
@@ -13,6 +13,14 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_
 
 LABEL_TO_ID = {"FoxNews": 0, "NBC": 1}
 ID_TO_LABEL = {0: "FoxNews", 1: "NBC"}
+
+
+def default_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 def normalize_text(text: str) -> str:
@@ -67,7 +75,7 @@ class TrainConfig:
     warmup_ratio: float = 0.1
     epochs: int = 4
     seed: int = 42
-    device: str = "mps" if torch.backends.mps.is_available() else "cpu"
+    device: str = field(default_factory=default_device)
 
 
 def set_seed(seed: int) -> None:

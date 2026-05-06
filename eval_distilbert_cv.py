@@ -16,6 +16,14 @@ def normalize_text(text: str) -> str:
     return (text or "").strip()
 
 
+def pick_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -77,7 +85,7 @@ def run_fold(
     seed: int,
 ) -> float:
     set_seed(seed)
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = pick_device()
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     train_enc = tokenizer(train_texts, truncation=True, padding=True, max_length=max_length, return_tensors="pt")
