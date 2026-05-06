@@ -56,4 +56,4 @@ On GPU instances, install a CUDA build of PyTorch from [pytorch.org](https://pyt
 
 ## Report
 
-Use `experiment_log.md` and `model_iteration_log.md` as the primary sources for methods, ablations, and submission packaging.
+Use **`REPORT_MATERIALS.md`** as the single consolidated source for the write-up (tables, caveats, outline). Raw logs: `experiment_log.md`, `model_iteration_log.md` (older notes; some lines are superseded — the report doc reconciles them).
