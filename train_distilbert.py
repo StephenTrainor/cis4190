@@ -1,9 +1,11 @@
 import argparse
 import csv
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
@@ -14,7 +16,7 @@ ID_TO_LABEL = {0: "FoxNews", 1: "NBC"}
 
 
 def normalize_text(text: str) -> str:
-    return (text or "").strip().lower()
+    return (text or "").strip()
 
 
 def read_rows(csv_path: Path) -> Tuple[List[str], List[int]]:
@@ -64,10 +66,20 @@ class TrainConfig:
     weight_decay: float = 0.01
     warmup_ratio: float = 0.1
     epochs: int = 4
+    seed: int = 42
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def train(config: TrainConfig, train_csv: Path, output_dir: Path) -> None:
+    set_seed(config.seed)
     output_dir.mkdir(parents=True, exist_ok=True)
     texts, labels = read_rows(train_csv)
 
@@ -84,7 +96,11 @@ def train(config: TrainConfig, train_csv: Path, output_dir: Path) -> None:
     dataset = HeadlineDataset(encodings, label_tensor)
     loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    model = AutoModelForSequenceClassification.from_pretrained(config.model_name, num_labels=2)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        config.model_name,
+        num_labels=2,
+        use_safetensors=True,
+    )
     device = torch.device(config.device)
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
@@ -128,6 +144,7 @@ def main() -> None:
     parser.add_argument("--warmup_ratio", type=float, default=0.1)
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--model_name", default="distilbert-base-uncased")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     cfg = TrainConfig(
@@ -138,6 +155,7 @@ def main() -> None:
         weight_decay=args.weight_decay,
         warmup_ratio=args.warmup_ratio,
         epochs=args.epochs,
+        seed=args.seed,
     )
     train(cfg, Path(args.train_csv), Path(args.output_dir))
 
