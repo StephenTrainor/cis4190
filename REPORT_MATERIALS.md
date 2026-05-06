@@ -18,9 +18,9 @@
 
 **Phase A — Classical bag-of-words.** We began with **word TF–IDF** plus linear models (multinomial Naive Bayes, logistic regression, **LinearSVC**, SGD). On 5-fold stratified CV this landed around **0.78–0.80** accuracy. That established a floor: outlets share topics and vocabulary, so word unigrams/bigrams alone are limited.
 
-**Phase B — Richer classical features.** We tried **character n-gram TF–IDF** (wider n-gram spans, sublinear TF) with **LinearSVC**, and a **hybrid** word + char pipeline. CV improved to about **~0.82** (best classical near **0.821**). Still short of strong leaderboard performance and of transformer results.
+**Phase B — Richer classical features.** We tried **character n-gram TF–IDF** (wider n-gram spans, sublinear TF) with **LinearSVC**, and a **hybrid** word + char pipeline. CV improved to about **~0.82** (best classical near **0.821**). An early submission path used **char_wb (3–5) + LinearSVC** packed in `model.pt` before the headline-only / prep fixes. Still short of strong leaderboard performance and of transformer results.
 
-**Phase C — Why leaderboard lagged local scores.** Hidden-set accuracy stayed near **~0.80** while some local checks looked much higher. The main issue was **preprocessing mismatch and fragility**: an earlier `prepare_data` path could **re-crawl URLs** at evaluation time, producing empty or inconsistent text under timeouts and blocks. We **stopped all network I/O** in `prepare_data` and standardized on **headline fields already present in the CSV**. We also removed **URL text as model input** and any **URL-string shortcuts** in `predict` so the submission stayed **headline-only** (URL remains acceptable for **constructing labels** in the training CSV, consistent with the assignment).
+**Phase C — Why leaderboard lagged local scores.** Hidden-set accuracy stayed near **~0.80** (e.g. **~0.799** on `url_val` in one snapshot) while some local checks looked much higher. The main issue was **preprocessing mismatch and fragility**: an earlier `prepare_data` path could **re-crawl URLs** at evaluation time, producing empty or inconsistent text under timeouts and blocks. We **stopped all network I/O** in `prepare_data` and standardized on **headline fields already present in the CSV**. Optional dependencies in `preprocess.py` are **import-guarded** so the module loads even when `bs4` / `pandas` are missing in a minimal environment. We also removed **URL text as model input** and any **URL-domain shortcuts** in `predict` so the submission stayed **headline-only** (URL remains acceptable for **constructing labels** in the training CSV, consistent with the assignment).
 
 **Phase D — Transformers.** We added **Hugging Face** fine-tuning (`train_distilbert.py`, CV via `eval_distilbert_cv.py`). **DistilBERT** and **RoBERTa-base** beat classical models. The biggest empirical lesson was **normalization**: **lowercasing headlines before tokenization hurt RoBERTa**; preserving case after light cleaning improved 3-fold CV to about **0.8526** (RoBERTa-base, 3 epochs, batch 8, lr 2e-5, max length 128). We tried longer sequences, more epochs, other LRs, **DistilRoBERTa**, **BERT-cased**, **DeBERTa**, and **RoBERTa-large**; none consistently beat that RoBERTa-base recipe on CV, and larger models sometimes **overfit or became unstable** on ~3.8k examples.
 
@@ -85,24 +85,31 @@ From iteration log:
 
 From `experiment_log.md`:
 
-| Setting | CV mean | Notes |
-|---------|---------|--------|
-| DistilBERT, baseline hparams | 0.8308 | |
-| DistilBERT, tuned | 0.8302 | |
-| RoBERTa-base, `max_length=96` | **0.8365** | best in that sweep |
+| Setting | CV mean | CV std / folds (if logged) |
+|---------|---------|--------------------------------|
+| DistilBERT, baseline (`epochs=3`, `bs=16`, `lr=2e-5`, `max_length=64`) | 0.8308 | std 0.0085; folds 0.8219, 0.8281, 0.8423 |
+| DistilBERT, tuned (`max_length=96`, `wd=0.01`, `warmup=0.1`, 4 ep) | 0.8302 | std 0.0071 |
+| RoBERTa-base, `max_length=96`, `lr=2e-5` | **0.8365** | std 0.0108; best in that sweep |
+| RoBERTa-base, `max_length=96`, `lr=1e-5` | 0.8263 | std 0.0041 |
 
 ### 6.2 Refined RoBERTa study (headline-only, preserve case)
 
-Key result: **do not lowercase** headlines for RoBERTa.
+Key result: **do not lowercase** headlines for RoBERTa — the same recipe with **lowercased** text reached only **0.8350 ± 0.0066** (3-fold CV), while **preserving original case** reached **0.8526 ± 0.0169**.
 
 | Configuration | CV mean | CV std |
 |----------------|---------|--------|
+| RoBERTa-base, 3 epochs, bs 8, lr 2e-5, max_len **128**, **lowercased** | 0.8350 | 0.0066 |
 | RoBERTa-base, 3 epochs, bs 8, lr 2e-5, max_len **128**, case preserved | **0.8526** | 0.0169 |
 | RoBERTa-base, max_len 192 | 0.8470 | 0.0106 |
 | RoBERTa-base, 4 epochs, lr 1.5e-5 | 0.8463 | 0.0068 |
-| RoBERTa-large (same budget) | ~0.799 | unstable |
-| DeBERTa-v3-base (tuned attempt) | ~0.822 | |
-| BERT-base-cased | ~0.835 | |
+| RoBERTa-base, 2 epochs, lr 2e-5, max_len 128 | 0.8344 | 0.0126 |
+| RoBERTa-base, lr 1e-5, max_len 128 | 0.8392 | 0.0088 |
+| RoBERTa-large (same budget) | ~0.799 | unstable (high fold variance) |
+| DeBERTa-v3-base (tuned attempt) | 0.8218 | 0.0144 |
+| BERT-base-cased | 0.8347 | 0.0017 |
+| DistilRoBERTa-base, 4 epochs, bs 16 | 0.8344 | 0.0085 |
+
+**Seed sensitivity:** For the best config above, extra seeds (**7**, **21**, **99**) gave CV means **0.8405**, **0.8410**, **0.8344** — none beat **0.8526**, so the reported best run was not simply “lucky seed,” but variance across seeds remained non-trivial.
 
 **Report sentence:** Larger models did not automatically win; **RoBERTa-base with conservative fine-tuning and preserved casing** gave the best cross-validated headline-only performance in this project.
 
@@ -133,7 +140,8 @@ python export_submission_roberta.py \
 |--------|----------------|----------------|
 | Leaderboard `url_val` (earlier classical / brittle prep) | ~**0.799** | Hidden distribution; preprocessing bugs (e.g. live crawling) hurt badly |
 | Leaderboard after RoBERTa + stable `prepare_data` | ~**0.837** (your “big-test” style run) | Meaningful gain from transformers + deterministic pipeline |
-| Local `eval_project_b.py` on **same** CSV used for training | ~**0.97** | **Not** an unbiased generalization estimate — near in-distribution fit on labeled corpus |
+| Local full-corpus checks (older **NB / classical** submission path, same CSV) | **0.9125** fit; **0.9041** on an internal holdout slice (`experiment_log.md`) | High **in-distribution** scores even before transformers — do not confuse with hidden-test performance |
+| Local `eval_project_b.py` with **final RoBERTa** + bundled `model.pt` on full training CSV | **~0.967** (e.g. **0.9666** reported after packaging) | **Not** an unbiased generalization estimate — near full-data fit; still useful as a contract/smoke test |
 
 **For the report:** Always distinguish **hidden-test leaderboard accuracy** from **in-sample local accuracy**. Discuss **domain shift** and why CV (~0.85) tracks more realistically than ~0.97 local checks.
 
@@ -143,7 +151,7 @@ python export_submission_roberta.py \
 
 1. **Deterministic preprocessing:** `prepare_data` must not depend on live scraping for leaderboard reliability.
 2. **Casing:** Lowercasing removed useful signal for pretrained tokenizers; **preserve case** for RoBERTa.
-3. **Submission packaging:** Single `model.pt` bundling weights + tokenizer files satisfies **three-file-only** upload limits (~480MB — acceptable if the platform allows).
+3. **Submission packaging:** Single `model.pt` bundling weights + tokenizer files satisfies **three-file-only** upload limits (~480MB — acceptable if the platform allows). **Smoke test:** with the training artifact directory removed, `eval_project_b.py` still matched full-corpus accuracy (**~0.9666**), confirming the bundle is self-contained.
 4. **Latency:** Transformer inference is slower (~**8 ms**/example on leaderboard vs ~**0.5 ms** for classical) — trade accuracy for speed.
 5. **Git:** Large weights and `.venv` should stay out of version control; use `.gitignore` and team file sharing for `model.pt`.
 
