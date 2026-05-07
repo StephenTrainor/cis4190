@@ -1,3 +1,10 @@
+beautifulsoup4==4.14.3
+matplotlib==3.10.8
+pandas==3.0.2
+requests==2.33.1
+scikit-learn==1.8.0
+torch==2.11.0
+transformers==5.6.2
 # Leaderboard / course env typically provides core packages; pin locally as needed.
 torch>=2.0.0
 transformers>=4.40.0
