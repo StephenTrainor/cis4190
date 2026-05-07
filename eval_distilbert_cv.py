@@ -1,9 +1,11 @@
 import argparse
 import csv
+import random
 from pathlib import Path
 from statistics import mean, pstdev
 from typing import List, Tuple
 
+import numpy as np
 import torch
 from sklearn.model_selection import StratifiedKFold
 from torch.utils.data import DataLoader, Dataset
@@ -11,7 +13,23 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_
 
 
 def normalize_text(text: str) -> str:
-    return (text or "").strip().lower()
+    return (text or "").strip()
+
+
+def pick_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def read_rows(csv_path: Path) -> Tuple[List[str], List[int]]:
@@ -64,8 +82,10 @@ def run_fold(
     model_name: str,
     weight_decay: float,
     warmup_ratio: float,
+    seed: int,
 ) -> float:
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    set_seed(seed)
+    device = pick_device()
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     train_enc = tokenizer(train_texts, truncation=True, padding=True, max_length=max_length, return_tensors="pt")
@@ -76,7 +96,11 @@ def run_fold(
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2).to(device)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+        num_labels=2,
+        use_safetensors=True,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     total_steps = max(1, epochs * len(train_loader))
     warmup_steps = int(total_steps * warmup_ratio)
@@ -122,10 +146,11 @@ def main() -> None:
     parser.add_argument("--model_name", default="distilbert-base-uncased")
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--warmup_ratio", type=float, default=0.1)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     texts, labels = read_rows(Path(args.csv_path))
-    skf = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=42)
+    skf = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=args.seed)
 
     scores: List[float] = []
     for fold_i, (tr, va) in enumerate(skf.split(texts, labels), start=1):
@@ -145,6 +170,7 @@ def main() -> None:
             model_name=args.model_name,
             weight_decay=args.weight_decay,
             warmup_ratio=args.warmup_ratio,
+            seed=args.seed + fold_i,
         )
         scores.append(acc)
         print(f"fold={fold_i} acc={acc:.6f}")
